@@ -1,13 +1,7 @@
 import sys
-from PyQt5.QtWidgets import QMenu, QApplication, QWidget, QPushButton, QMainWindow, QAction, qApp, QSizePolicy
-from PyQt5.QtWidgets import QComboBox, QLabel
-from PyQt5.QtWidgets import QVBoxLayout
-from PyQt5.QtGui import QIcon
-from PyQt5.QtGui import QColor
-from PyQt5.QtCore import QRect
+from PyQt5.QtWidgets import *
 from matplotlib.patches import Rectangle
 import numpy as np
-from matplotlib.backends.qt_compat import QtCore, QtWidgets, is_pyqt5
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas, NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
@@ -20,7 +14,6 @@ Path = MFA + 'gridFit/ablation_marks_XYOLD'
 oldX, oldY = np.load(Path + '.npy')
 
 class Window(QMainWindow):
-
     def __init__(self):
         super().__init__()
         self.initUI()
@@ -29,18 +22,38 @@ class Window(QMainWindow):
         self.setWindowTitle('Ablation marks region processing')
         self.setGeometry(10, 10, 750, 750)
 
-        m = PlotCanvas(self, width=6, height=5)
-        self.toolbar = NavigationToolbar(m, self)
-        selectb = QPushButton('Crop', self)
-        selectb.move(620, 30)
-        selectb.clicked.connect(lambda: m.on_activated('Crop', m.x1, m.y1, m.x2, m.y2))
-        selectb = QPushButton('Delete', self)
-        selectb.move(620, 80)
-        selectb.clicked.connect(lambda: m.on_activated('Delete', m.x1, m.y1, m.x2, m.y2))
-        revertb = QPushButton('Revert', self)
-        revertb.move(620, 130)
+        mainMenu = self.menuBar()
+        mainMenu.setNativeMenuBar(False)
+        fileMenu = mainMenu.addMenu('File')
+        helpMenu = mainMenu.addMenu('Help')
 
-        # #TODO: Add lasso to list of tools
+        widget = QWidget(self)
+        self.setCentralWidget(widget)
+        vlay = QVBoxLayout()
+        hlay = QHBoxLayout(widget)
+        hlay.addLayout(vlay)
+
+        #Buttons
+        selectb = QPushButton('Crop', self)
+        selectb.clicked.connect(lambda: m.canvas.on_activated('Crop', m.canvas.x1, m.canvas.y1,
+                                                              m.canvas.x2, m.canvas.y2))
+        deleteb = QPushButton('Delete', self)
+        deleteb.clicked.connect(lambda: m.canvas.on_activated('Delete', m.canvas.x1, m.canvas.y1,
+                                                              m.canvas.x2, m.canvas.y2))
+        revertb = QPushButton('Revert', self)
+
+        # Nested layout
+        vlay2 = QVBoxLayout()
+        vlay2.addWidget(selectb)
+        vlay2.addWidget(deleteb)
+        vlay2.addWidget(revertb)
+
+        m = WidgetPlot(self)
+
+        hlay.addWidget(m)
+        hlay.addLayout(vlay2)
+
+        # #TODO: Add lasso to the tools list
         #
         # self.comboBox = QComboBox(self)
         # self.comboBox.move(620, 180)
@@ -48,15 +61,22 @@ class Window(QMainWindow):
         # self.comboBox.addItem("Rectqngular")
         # self.comboBox.addItem("Lasso")
 
-        menubar = self.menuBar()
-        fileMenu = menubar.addMenu('Import')
-        fileMenu.addAction(QAction('Data', self))
-        self.show()
+        # menubar = self.menuBar()
+        # fileMenu = menubar.addMenu('Import')
+        # fileMenu.addAction(QAction('Data', self))
+        # self.show()
+
+class WidgetPlot(QWidget):
+    def __init__(self, *args, **kwargs):
+        QWidget.__init__(self, *args, **kwargs)
+        self.setLayout(QVBoxLayout())
+        self.canvas = PlotCanvas(self, width=6, height=5)
+        self.toolbar = NavigationToolbar(self.canvas, self)
+        self.layout().addWidget(self.toolbar)
+        self.layout().addWidget(self.canvas)
 
 class PlotCanvas(FigureCanvas):
-
     def __init__(self, parent=None, width=5, height=4, dpi=100):
-
         self.x1 = None
         self.y1 = None
         self.x2 = None
@@ -69,7 +89,6 @@ class PlotCanvas(FigureCanvas):
 
     def plot(self):
         self.ax.scatter(oldX, oldY, 5)
-        print(len(oldX), len(oldY))
         self.ax.axis('equal')
         self.ax.set_title('Loaded data')
 
@@ -91,11 +110,9 @@ class PlotCanvas(FigureCanvas):
 
         # self.pts = self.ax.scatter(oldX, oldY, 5)
         # selector = SelectFromCollection(self.ax, self.pts)
-        # plt.connect('key_press_event', toggle_selector)
-
+        plt.connect('key_press_event', toggle_selector)
 
     def select_rectangle_callback(self, eclick, erelease):
-        print(eclick, erelease)
         self.x1, self.y1 = eclick.xdata, eclick.ydata
         self.x2, self.y2 = erelease.xdata, erelease.ydata
         print("(%3.2f, %3.2f) --> (%3.2f, %3.2f)" % (self.x1, self.y1, self.x2, self.y2))
@@ -109,8 +126,6 @@ class PlotCanvas(FigureCanvas):
             y_range = np.intersect1d(np.where(selectedY >= y1)[0], np.where(selectedY <= y2)[0])
             newX = np.take(selectedX, y_range)
             newY = np.take(selectedY, y_range)
-            print(newX, newY)
-            print(len(newX), len(newY))
             self.ax.cla()
             self.ax.scatter(newX, newY)
             print('Import')
@@ -123,6 +138,7 @@ class PlotCanvas(FigureCanvas):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     main = Window()
+    main.show()
     sys.exit(app.exec_())
 
 
