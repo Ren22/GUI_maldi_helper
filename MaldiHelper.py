@@ -118,12 +118,23 @@ class PlotCanvas(FigureCanvas):
     def __init__(self, arrX, arrY, width=5, height=4, dpi=100):
         self.currX, self.currY = arrX, arrY  # curr = current
         self.stackX = []; self.stackY = []
+        self.limX = (); self.limY = ()
         self.set_init_coords()
         self.fig = Figure(figsize=(width, height), dpi=dpi)
         self.ax = self.fig.add_subplot(111)
+        self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
+        self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
         FigureCanvas.__init__(self, self.fig)
         # self.setParent(parent)
         self.plot()
+
+    def on_xlims_change(self, axes):
+        self.limX = axes.get_xlim()
+        print('x_lims:', axes.get_xlim())
+
+    def on_ylims_change(self, axes):
+        self.limY = axes.get_ylim()
+        print('y_lims:', axes.get_ylim())
 
     def drop_vals(self, arrX, arrY):
         self.currX, self.currY, self.stackX, self.stackY = arrX, arrY, [], []  # curr = current
@@ -174,9 +185,11 @@ class PlotCanvas(FigureCanvas):
 
     def refresh_n_plot(self, x_arr, y_arr):
         self.ax.cla()
+        self.ax.set_xlim(self.limX); self.ax.set_ylim(self.limY)
         self.ax.scatter(x_arr, y_arr, 5)
-        self.ax.axis('equal')
         self.ax.set_title('Loaded data')
+        self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
+        self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
         self.draw()
 
     def on_activated(self, action, x1, y1, x2, y2):
