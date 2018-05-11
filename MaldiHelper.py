@@ -1,13 +1,17 @@
-import sys
+import sys, os
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import QIcon
 from PyQt5 import QtCore
 from matplotlib.patches import Rectangle
 import numpy as np
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas, NavigationToolbar2QT as NavigationToolbar
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas, \
+    NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 from matplotlib.widgets import RectangleSelector
+import matplotlib.image as mpimg
+from PIL import Image
+from copy import deepcopy
 
 class Window(QMainWindow):
     def __init__(self):
@@ -18,29 +22,24 @@ class Window(QMainWindow):
     def initUI(self):
         self.setWindowTitle('Ablation marks region processing')
         self.setGeometry(10, 10, 750, 750)
-
-        #Buttons
+        # Buttons
         selectb = QPushButton('Crop', self)
         selectb.setShortcut('C')
         selectb.clicked.connect(lambda: m.canvas.on_activated('Crop', m.canvas.x1, m.canvas.y1,
                                                               m.canvas.x2, m.canvas.y2))
-
         deleteb = QPushButton('Delete', self)
         deleteb.setShortcut('D')
         deleteb.clicked.connect(lambda: m.canvas.on_activated('Delete', m.canvas.x1, m.canvas.y1,
                                                               m.canvas.x2, m.canvas.y2))
-
         revertb = QPushButton('Revert', self)
         revertb.setShortcut('R')
         revertb.clicked.connect(lambda: m.canvas.on_activated('Revert', m.canvas.x1, m.canvas.y1,
                                                               m.canvas.x2, m.canvas.y2))
-
         widget = QWidget(self)
         self.setCentralWidget(widget)
         vlay = QVBoxLayout()
         hlay = QHBoxLayout(widget)
         hlay.addLayout(vlay)
-
         # Nested layout
         vlay2 = QVBoxLayout()
         vlay2.addStretch()
@@ -50,56 +49,79 @@ class Window(QMainWindow):
         m = WidgetPlot()
         hlay.addWidget(m)
         hlay.addLayout(vlay2)
-
         mainMenu = self.menuBar()
         mainMenu.setNativeMenuBar(False)
         fileMenu = mainMenu.addMenu('File')
         helpMenu = mainMenu.addMenu('Help')
-
         importFile = QAction('Import', self)
         importFile.setShortcut('Ctrl+A')
         importFile.setStatusTip('Import npy array or image')
         importFile.triggered.connect(m.openFileDialog)
         fileMenu.addAction(importFile)
-
         importFile = QAction('Export', self)
         importFile.setShortcut('Ctrl+S')
         importFile.setStatusTip('Export npy array or image')
         importFile.triggered.connect(m.saveFileDialog)
         fileMenu.addAction(importFile)
-
         exitButton = QAction('Exit', self)
         exitButton.setShortcut('Ctrl+Q')
         exitButton.setStatusTip('Exit application')
         exitButton.triggered.connect(self.close)
         fileMenu.addAction(exitButton)
 
+
 class WidgetPlot(QWidget):
     def __init__(self):
         super().__init__()
         self.canvas = []
         self.setLayout(QVBoxLayout())
+        self.ext = ''
 
     def openFileDialog(self):
         try:
             options = QFileDialog.Options()
             options |= QFileDialog.DontUseNativeDialog
             self.filePath, _ = QFileDialog.getOpenFileName(self, "QFileDialog.getOpenFileName()", "",
-                                                           "All Files (*);;Numpy files (*.npy);;JPEG files(*.jpeg, *.jpg)",
+                                                           "All Files (*);;Numpy files (*.npy);;"
+                                                           "JPEG files(*.jpeg, *.jpg);;"
+                                                           "PNG files(*.png)",
                                                            options=options)
-
-            self.arrX, self.arrY = np.load(self.filePath)
+            self.ext = os.path.splitext(self.filePath)[-1]
+            self.canvasInitializer()
         except:
             print('File cannot be imported')
-        if not self.canvas:
-            self.canvas = PlotCanvas(self.arrX, self.arrY)
-            self.toolbar = NavigationToolbar(self.canvas, self)
-            self.layout().addWidget(self.toolbar)
-            self.layout().addWidget(self.canvas)
 
-        else:
-            PlotCanvas.drop_vals(self.canvas, self.arrX, self.arrY)
-            PlotCanvas.refresh_n_plot(self.canvas, self.arrX, self.arrY)
+    def canvasInitializer(self):
+        if self.ext == '.npy':
+            arrX, arrY = np.load(self.filePath)
+            if not self.canvas:
+                self.canvas = PlotCanvas(arrX, arrY)
+                self.toolbar = NavigationToolbar(self.canvas, self)
+                self.layout().addWidget(self.toolbar)
+                self.layout().addWidget(self.canvas)
+            else:
+                PlotCanvas.drop_vals(self.canvas, self.arrX, self.arrY)
+                PlotCanvas.refresh_n_plot(self.canvas, self.arrX, self.arrY)
+        elif self.ext != '.npy':
+            img = Image.open(self.filePath)
+            if isinstance(self.canvas, PlotCanvas):
+                self.canvas.ax.cla()
+                # self.canvas.fig.clear()
+                self.canvas.ax.draw()
+                # self.canvas.ax.clf()
+                self.canvas = PlotCanvasImg(img)
+                self.toolbar = NavigationToolbar(self.canvas, self)
+                self.layout().addWidget(self.toolbar)
+                # self.layout().addWidget(self.canvas)
+            elif isinstance(self.canvas, PlotCanvasImg):
+                PlotCanvasImg.img = img
+                PlotCanvasImg.stackImgArr = []
+            elif not self.canvas:
+                self.canvas = PlotCanvasImg(img)
+                self.toolbar = NavigationToolbar(self.canvas, self)
+                self.layout().addWidget(self.toolbar)
+                self.layout().addWidget(self.canvas)
+
 
     def saveFileDialog(self):
         options = QFileDialog.Options()
@@ -114,27 +136,28 @@ class WidgetPlot(QWidget):
             except:
                 print('Values were not exported!')
 
+
 class PlotCanvas(FigureCanvas):
     def __init__(self, arrX, arrY, width=5, height=4, dpi=100):
         self.currX, self.currY = arrX, arrY  # curr = current
-        self.stackX = []; self.stackY = []
-        self.limX = (); self.limY = ()
+        self.stackX = [];
+        self.stackY = []
+        self.limX = ();
+        self.limY = ()
         self.set_init_coords()
         self.fig = Figure(figsize=(width, height), dpi=dpi)
         self.ax = self.fig.add_subplot(111)
         self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
         self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
-        FigureCanvas.__init__(self, self.fig)
+        FigureCanvas.__init__(self, self.fig)  ## ?? Is this line needed
         # self.setParent(parent)
         self.plot()
 
     def on_xlims_change(self, axes):
         self.limX = axes.get_xlim()
-        print('x_lims:', axes.get_xlim())
 
     def on_ylims_change(self, axes):
         self.limY = axes.get_ylim()
-        print('y_lims:', axes.get_ylim())
 
     def drop_vals(self, arrX, arrY):
         self.currX, self.currY, self.stackX, self.stackY = arrX, arrY, [], []  # curr = current
@@ -160,11 +183,10 @@ class PlotCanvas(FigureCanvas):
 
         toggle_selector.RS = RectangleSelector(self.ax, self.rectangle_callback,
                                                drawtype='box', useblit=True,
-                                               button=[1, 3],  # don't use middle button
+                                               button=[1, 3],
                                                minspanx=5, minspany=5,
                                                spancoords='pixels',
                                                interactive=True)
-
         plt.connect('key_press_event', toggle_selector)
 
     def rectangle_callback(self, eclick, erelease):
@@ -180,12 +202,12 @@ class PlotCanvas(FigureCanvas):
         for i in indX:
             if currY[i] >= y1 and currY[i] <= y2:
                 ind.append(i)
-
         return ind
 
     def refresh_n_plot(self, x_arr, y_arr):
         self.ax.cla()
-        self.ax.set_xlim(self.limX); self.ax.set_ylim(self.limY)
+        self.ax.set_xlim(self.limX);
+        self.ax.set_ylim(self.limY)
         self.ax.scatter(x_arr, y_arr, 5)
         self.ax.set_title('Loaded data')
         self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
@@ -216,6 +238,91 @@ class PlotCanvas(FigureCanvas):
                 self.stackX = self.stackX[:-1]
                 self.stackY = self.stackY[:-1]
                 self.refresh_n_plot(self.currX, self.currY)
+
+
+class PlotCanvasImg(FigureCanvas):
+    def __init__(self, img, width=5, height=4, dpi=100):
+        self.img = img
+        self.imgArr = mpimg.pil_to_array(img)
+        self.imgArr.setflags(write=True)
+        self.stackImgArr = []
+        self.limX = ()
+        self.limY = ()
+        # self.set_init_coords()
+        self.fig = Figure(figsize=(width, height), dpi=dpi)
+        self.ax = self.fig.add_subplot(111)
+        self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
+        self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
+        FigureCanvas.__init__(self, self.fig)
+        # self.setParent(parent)
+        self.set_init_coords()
+        self.plot()
+
+    def on_xlims_change(self, axes):
+        self.limX = axes.get_xlim()
+
+    def on_ylims_change(self, axes):
+        self.limY = axes.get_ylim()
+
+    def set_init_coords(self):
+        self.x1 = None
+        self.y1 = None
+        self.x2 = None
+        self.y2 = None
+
+    def plot(self):
+        self.ax.imshow(self.imgArr)
+        self.ax.set_title('Image processing')
+
+        def toggle_selector(event):
+            if event.key in ['Q', 'q'] and toggle_selector.RS.active:
+                print(' RectangleSelector deactivated.')
+                toggle_selector.RS.set_active(False)
+            if event.key in ['A', 'a'] and not toggle_selector.RS.active:
+                print(' RectangleSelector activated.')
+                toggle_selector.RS.set_active(True)
+
+        toggle_selector.RS = RectangleSelector(self.ax, self.rectangle_callback,
+                                               drawtype='box', useblit=True,
+                                               button=[1, 3],
+                                               minspanx=5, minspany=5,
+                                               spancoords='pixels',
+                                               interactive=True)
+        plt.connect('key_press_event', toggle_selector)
+
+    def rectangle_callback(self, eclick, erelease):
+        if [self.x1, self.y1, self.x2, self.y2] is not [eclick.xdata, eclick.ydata, erelease.xdata, erelease.ydata]:
+            self.x1, self.y1 = eclick.xdata, eclick.ydata
+            self.x2, self.y2 = erelease.xdata, erelease.ydata
+            print('({:3.2f}, {:3.2f}) --> ({:3.2f}, {:3.2f})'.format(self.x1, self.y1, self.x2, self.y2))
+
+    def on_activated(self, action, x1, y1, x2, y2):
+        if x1 and y1 and x2 and y2:
+            if action == 'Crop':
+                self.stackImgArr.append(self.imgArr)
+                self.img = self.img.crop((x1, y1, x2, y2))
+                self.imgArr = mpimg.pil_to_array(self.img)
+                self.imgArr.setflags(write=True)
+                self.ax.cla()
+                self.ax.imshow(self.imgArr)
+                self.draw()
+            elif action == 'Delete':
+                x1, y1, x2, y2 = map(int, [x1, y1, x2, y2])
+                ImgArrCopy = deepcopy(self.imgArr)
+                self.stackImgArr.append(ImgArrCopy)
+                self.imgArr[y1:y2, x1:x2] = 255
+                self.img = Image.fromarray(self.imgArr)
+                self.ax.imshow(self.imgArr)
+                self.draw()
+        if action == 'Revert': #TODO: revert should store only changes to image array
+            if self.stackImgArr:
+                self.imgArr = self.stackImgArr[-1]
+                self.img = Image.fromarray(self.imgArr)
+                self.stackImgArr = self.stackImgArr[:-1]
+                self.ax.imshow(self.imgArr)
+                print(len(self.stackImgArr))
+                self.draw()
+
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
