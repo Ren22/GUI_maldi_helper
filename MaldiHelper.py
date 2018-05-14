@@ -13,6 +13,7 @@ from PIL import Image, ImageFile
 from copy import deepcopy
 import random
 ImageFile.LOAD_TRUNCATED_IMAGES = True
+Image.MAX_IMAGE_PIXELS = None
 
 class Window(QMainWindow):
     def __init__(self):
@@ -99,7 +100,6 @@ class WidgetPlot(QWidget):
                 QMessageBox.about(self, "Warning", "Your input data is very big, therefore the number "
                                                    "of shown points was decreased. Your data will be still"
                                                    "consistent after you save it.")
-
             if isinstance(self.canvas, PlotCanvas):
                 self.canvas.drop_n_setvals(arrX, arrY)
                 self.canvas.refresh_plot(arrX, arrY)
@@ -118,10 +118,11 @@ class WidgetPlot(QWidget):
         elif self.ext == '.jpg' or \
                 self.ext == '.jpeg' or \
                 self.ext == '.png' or \
-                self.ext == '.tif':
+                self.ext == '.tif' or \
+                self.ext == '.tiff' or \
+                self.ext == '':
             img = Image.open(self.filePath).convert('RGBA')
             if isinstance(self.canvas, PlotCanvas):
-                # PlotCanvas.clearPlot(self.canvas)
                 self.clearWidgetLayout(self.layout())
                 self.canvas = PlotCanvasImg(img)
                 self.toolbar = NavigationToolbar(self.canvas, self)
@@ -136,9 +137,13 @@ class WidgetPlot(QWidget):
                 self.layout().addWidget(self.toolbar)
                 self.layout().addWidget(self.canvas)
         else: # Check if this works!
-            QMessageBox.about(self, "Error", "File extension is not supported!"
-                                             "Plese choose either numpy array file(*.npy)"
-                                             " or image file(*.jpg,*.png).")
+            QMessageBox.about(self, "Error", "File extension is not supported!")
+
+    def clearWidgetLayout(self, layout):
+        while layout.count():
+            child = layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
 
     def saveFileDialog(self):
         options = QFileDialog.Options()
@@ -152,13 +157,6 @@ class WidgetPlot(QWidget):
                 np.save('{:s}'.format(filePath), exp)
             except:
                 print('Values were not exported!')
-
-    def clearWidgetLayout(self, layout):
-        while layout.count():
-            child = layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
-
 
 class PlotCanvas(FigureCanvas):
     def __init__(self, arrX, arrY, width=5, height=4, dpi=100):
@@ -234,7 +232,7 @@ class PlotCanvas(FigureCanvas):
                 ind.append(i)
         return ind
 
-    def refresh_cropped_plot(self, x_arr, y_arr):
+    def refresh_plot(self, x_arr, y_arr):
         self.ax.cla()
         self.profScatter(x_arr, y_arr)
         self.ax.set_title('Loaded data')
@@ -242,7 +240,7 @@ class PlotCanvas(FigureCanvas):
         self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
         self.draw()
 
-    def refresh_plot(self, x_arr, y_arr):
+    def refresh_plot_deletion(self, x_arr, y_arr):
         self.ax.cla()
         self.ax.set_xlim(self.limX)
         self.ax.set_ylim(self.limY)
@@ -260,14 +258,14 @@ class PlotCanvas(FigureCanvas):
                 self.stackY.append(self.currY)
                 self.currX = self.currX[indexes]
                 self.currY = self.currY[indexes]
-                self.refresh_cropped_plot(self.currX, self.currY)
+                self.refresh_plot(self.currX, self.currY)
                 self.set_init_coords()
             elif indexes and action == 'Delete':
                 self.stackX.append(self.currX)
                 self.stackY.append(self.currY)
                 self.currX = np.delete(self.currX, indexes)
                 self.currY = np.delete(self.currY, indexes)
-                self.refresh_plot(self.currX, self.currY)
+                self.refresh_plot_deletion(self.currX, self.currY)
                 self.set_init_coords()
         if action == 'Revert':
             if self.stackX and self.stackY:
@@ -368,7 +366,6 @@ class PlotCanvasImg(FigureCanvas):
                 self.img = Image.fromarray(self.imgArr)
                 self.stackImgArr = self.stackImgArr[:-1]
                 self.ax.imshow(self.imgArr)
-                print(len(self.stackImgArr))
                 self.draw()
 
 if __name__ == '__main__':
