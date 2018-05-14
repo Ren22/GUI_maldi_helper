@@ -9,9 +9,10 @@ from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 from matplotlib.widgets import RectangleSelector
 import matplotlib.image as mpimg
-from PIL import Image
+from PIL import Image, ImageFile
 from copy import deepcopy
 import random
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 class Window(QMainWindow):
     def __init__(self):
@@ -101,7 +102,7 @@ class WidgetPlot(QWidget):
 
             if isinstance(self.canvas, PlotCanvas):
                 self.canvas.drop_n_setvals(arrX, arrY)
-                self.canvas.refresh_n_plot(arrX, arrY)
+                self.canvas.refresh_plot(arrX, arrY)
             elif isinstance(self.canvas, PlotCanvasImg):
                 self.clearWidgetLayout(self.layout())
                 self.canvas = PlotCanvas(arrX, arrY)
@@ -116,7 +117,8 @@ class WidgetPlot(QWidget):
 
         elif self.ext == '.jpg' or \
                 self.ext == '.jpeg' or \
-                self.ext == '.png':
+                self.ext == '.png' or \
+                self.ext == '.tif':
             img = Image.open(self.filePath).convert('RGBA')
             if isinstance(self.canvas, PlotCanvas):
                 # PlotCanvas.clearPlot(self.canvas)
@@ -127,7 +129,7 @@ class WidgetPlot(QWidget):
                 self.layout().addWidget(self.canvas)
             elif isinstance(self.canvas, PlotCanvasImg):
                 self.canvas.stackImgArr = []
-                self.canvas.refresh_n_plot(img)
+                self.canvas.refresh_Img_plot(img)
             elif not self.canvas:
                 self.canvas = PlotCanvasImg(img)
                 self.toolbar = NavigationToolbar(self.canvas, self)
@@ -232,7 +234,15 @@ class PlotCanvas(FigureCanvas):
                 ind.append(i)
         return ind
 
-    def refresh_n_plot(self, x_arr, y_arr):
+    def refresh_cropped_plot(self, x_arr, y_arr):
+        self.ax.cla()
+        self.profScatter(x_arr, y_arr)
+        self.ax.set_title('Loaded data')
+        self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
+        self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
+        self.draw()
+
+    def refresh_plot(self, x_arr, y_arr):
         self.ax.cla()
         self.ax.set_xlim(self.limX)
         self.ax.set_ylim(self.limY)
@@ -250,14 +260,14 @@ class PlotCanvas(FigureCanvas):
                 self.stackY.append(self.currY)
                 self.currX = self.currX[indexes]
                 self.currY = self.currY[indexes]
-                self.refresh_n_plot(self.currX, self.currY)
+                self.refresh_cropped_plot(self.currX, self.currY)
                 self.set_init_coords()
             elif indexes and action == 'Delete':
                 self.stackX.append(self.currX)
                 self.stackY.append(self.currY)
                 self.currX = np.delete(self.currX, indexes)
                 self.currY = np.delete(self.currY, indexes)
-                self.refresh_n_plot(self.currX, self.currY)
+                self.refresh_plot(self.currX, self.currY)
                 self.set_init_coords()
         if action == 'Revert':
             if self.stackX and self.stackY:
@@ -265,8 +275,7 @@ class PlotCanvas(FigureCanvas):
                 self.currY = self.stackY[-1]
                 self.stackX = self.stackX[:-1]
                 self.stackY = self.stackY[:-1]
-                self.refresh_n_plot(self.currX, self.currY)
-
+                self.refresh_plot(self.currX, self.currY)
 
 class PlotCanvasImg(FigureCanvas):
     def __init__(self, img, width=5, height=4, dpi=100):
@@ -284,7 +293,7 @@ class PlotCanvasImg(FigureCanvas):
         self.set_init_coords()
         self.plot()
 
-    def refresh_n_plot(self, img):
+    def refresh_Img_plot(self, img):
         self.ax.cla()
         self.img = img
         self.imgArr = mpimg.pil_to_array(img)
