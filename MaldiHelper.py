@@ -2,7 +2,6 @@ import sys, os
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import QIcon
 from PyQt5 import QtCore
-from matplotlib.patches import Rectangle
 import numpy as np
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas, \
     NavigationToolbar2QT as NavigationToolbar
@@ -12,6 +11,7 @@ from matplotlib.widgets import RectangleSelector
 import matplotlib.image as mpimg
 from PIL import Image
 from copy import deepcopy
+import random
 
 class Window(QMainWindow):
     def __init__(self):
@@ -21,7 +21,7 @@ class Window(QMainWindow):
 
     def initUI(self):
         self.setWindowTitle('Ablation marks region processing')
-        self.setGeometry(10, 10, 750, 750)
+        self.setGeometry(100, 100, 750, 750)
         # Buttons
         selectb = QPushButton('Crop', self)
         selectb.setShortcut('C')
@@ -69,7 +69,6 @@ class Window(QMainWindow):
         exitButton.triggered.connect(self.close)
         fileMenu.addAction(exitButton)
 
-
 class WidgetPlot(QWidget):
     def __init__(self):
         super().__init__()
@@ -88,40 +87,56 @@ class WidgetPlot(QWidget):
                                                            options=options)
             self.ext = os.path.splitext(self.filePath)[-1]
             self.canvasInitializer()
-        except:
+        except Exception as e:
             print('File cannot be imported')
+            print(e.message, e.args)
 
     def canvasInitializer(self):
         if self.ext == '.npy':
             arrX, arrY = np.load(self.filePath)
-            if not self.canvas:
+            if len(arrX) >= 100000 or len(arrY) >= 100000:
+                QMessageBox.about(self, "Warning", "Your input data is very big, therefore the number "
+                                                   "of shown points was decreased. Your data will be still"
+                                                   "consistent after you save it.")
+
+            if isinstance(self.canvas, PlotCanvas):
+                self.canvas.drop_n_setvals(arrX, arrY)
+                self.canvas.refresh_n_plot(arrX, arrY)
+            elif isinstance(self.canvas, PlotCanvasImg):
+                self.clearWidgetLayout(self.layout())
                 self.canvas = PlotCanvas(arrX, arrY)
                 self.toolbar = NavigationToolbar(self.canvas, self)
                 self.layout().addWidget(self.toolbar)
                 self.layout().addWidget(self.canvas)
-            else:
-                PlotCanvas.drop_vals(self.canvas, self.arrX, self.arrY)
-                PlotCanvas.refresh_n_plot(self.canvas, self.arrX, self.arrY)
-        elif self.ext != '.npy':
-            img = Image.open(self.filePath)
+            elif not self.canvas:
+                self.canvas = PlotCanvas(arrX, arrY)
+                self.toolbar = NavigationToolbar(self.canvas, self)
+                self.layout().addWidget(self.toolbar)
+                self.layout().addWidget(self.canvas)
+
+        elif self.ext == '.jpg' or \
+                self.ext == '.jpeg' or \
+                self.ext == '.png':
+            img = Image.open(self.filePath).convert('RGBA')
             if isinstance(self.canvas, PlotCanvas):
-                self.canvas.ax.cla()
-                # self.canvas.fig.clear()
-                self.canvas.ax.draw()
-                # self.canvas.ax.clf()
+                # PlotCanvas.clearPlot(self.canvas)
+                self.clearWidgetLayout(self.layout())
                 self.canvas = PlotCanvasImg(img)
                 self.toolbar = NavigationToolbar(self.canvas, self)
                 self.layout().addWidget(self.toolbar)
-                # self.layout().addWidget(self.canvas)
+                self.layout().addWidget(self.canvas)
             elif isinstance(self.canvas, PlotCanvasImg):
-                PlotCanvasImg.img = img
-                PlotCanvasImg.stackImgArr = []
+                self.canvas.stackImgArr = []
+                self.canvas.refresh_n_plot(img)
             elif not self.canvas:
                 self.canvas = PlotCanvasImg(img)
                 self.toolbar = NavigationToolbar(self.canvas, self)
                 self.layout().addWidget(self.toolbar)
                 self.layout().addWidget(self.canvas)
-
+        else: # Check if this works!
+            QMessageBox.about(self, "Error", "File extension is not supported!"
+                                             "Plese choose either numpy array file(*.npy)"
+                                             " or image file(*.jpg,*.png).")
 
     def saveFileDialog(self):
         options = QFileDialog.Options()
@@ -136,20 +151,26 @@ class WidgetPlot(QWidget):
             except:
                 print('Values were not exported!')
 
+    def clearWidgetLayout(self, layout):
+        while layout.count():
+            child = layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
 
 class PlotCanvas(FigureCanvas):
     def __init__(self, arrX, arrY, width=5, height=4, dpi=100):
         self.currX, self.currY = arrX, arrY  # curr = current
-        self.stackX = [];
+        self.stackX = []
         self.stackY = []
-        self.limX = ();
+        self.limX = ()
         self.limY = ()
         self.set_init_coords()
         self.fig = Figure(figsize=(width, height), dpi=dpi)
         self.ax = self.fig.add_subplot(111)
         self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
         self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
-        FigureCanvas.__init__(self, self.fig)  ## ?? Is this line needed
+        FigureCanvas.__init__(self, self.fig)
         # self.setParent(parent)
         self.plot()
 
@@ -159,7 +180,7 @@ class PlotCanvas(FigureCanvas):
     def on_ylims_change(self, axes):
         self.limY = axes.get_ylim()
 
-    def drop_vals(self, arrX, arrY):
+    def drop_n_setvals(self, arrX, arrY):
         self.currX, self.currY, self.stackX, self.stackY = arrX, arrY, [], []  # curr = current
 
     def set_init_coords(self):
@@ -168,8 +189,15 @@ class PlotCanvas(FigureCanvas):
         self.x2 = None
         self.y2 = None
 
+    def profScatter(self, x_arr, y_arr):
+        if len(x_arr) >= 100000 or len(y_arr) >= 100000:
+            reducedIndexes = random.sample(range(len(x_arr)), 35000)
+            self.ax.scatter(x_arr[reducedIndexes], y_arr[reducedIndexes], 5)
+        else:
+            self.ax.scatter(x_arr, y_arr, 5)
+
     def plot(self):
-        self.ax.scatter(self.currX, self.currY, 5)
+        self.profScatter(self.currX, self.currY)
         self.ax.axis('equal')
         self.ax.set_title('Loaded data')
 
@@ -206,9 +234,9 @@ class PlotCanvas(FigureCanvas):
 
     def refresh_n_plot(self, x_arr, y_arr):
         self.ax.cla()
-        self.ax.set_xlim(self.limX);
+        self.ax.set_xlim(self.limX)
         self.ax.set_ylim(self.limY)
-        self.ax.scatter(x_arr, y_arr, 5)
+        self.profScatter(x_arr, y_arr)
         self.ax.set_title('Loaded data')
         self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
         self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
@@ -248,15 +276,24 @@ class PlotCanvasImg(FigureCanvas):
         self.stackImgArr = []
         self.limX = ()
         self.limY = ()
-        # self.set_init_coords()
         self.fig = Figure(figsize=(width, height), dpi=dpi)
         self.ax = self.fig.add_subplot(111)
         self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
         self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
         FigureCanvas.__init__(self, self.fig)
-        # self.setParent(parent)
         self.set_init_coords()
         self.plot()
+
+    def refresh_n_plot(self, img):
+        self.ax.cla()
+        self.img = img
+        self.imgArr = mpimg.pil_to_array(img)
+        self.imgArr.setflags(write=True)
+        self.ax.imshow(img)
+        self.ax.set_title('Loaded data')
+        self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
+        self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
+        self.fig.canvas.draw_idle()
 
     def on_xlims_change(self, axes):
         self.limX = axes.get_xlim()
@@ -306,6 +343,7 @@ class PlotCanvasImg(FigureCanvas):
                 self.ax.cla()
                 self.ax.imshow(self.imgArr)
                 self.draw()
+                self.set_init_coords()
             elif action == 'Delete':
                 x1, y1, x2, y2 = map(int, [x1, y1, x2, y2])
                 ImgArrCopy = deepcopy(self.imgArr)
@@ -314,6 +352,7 @@ class PlotCanvasImg(FigureCanvas):
                 self.img = Image.fromarray(self.imgArr)
                 self.ax.imshow(self.imgArr)
                 self.draw()
+                self.set_init_coords()
         if action == 'Revert': #TODO: revert should store only changes to image array
             if self.stackImgArr:
                 self.imgArr = self.stackImgArr[-1]
@@ -322,7 +361,6 @@ class PlotCanvasImg(FigureCanvas):
                 self.ax.imshow(self.imgArr)
                 print(len(self.stackImgArr))
                 self.draw()
-
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
