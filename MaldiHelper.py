@@ -4,7 +4,7 @@ from PyQt5.QtGui import QIcon
 from PyQt5 import QtCore
 import numpy as np
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas, \
-    NavigationToolbar2QT as NavigationToolbar
+    NavigationToolbar2QT
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 from matplotlib.widgets import RectangleSelector
@@ -14,6 +14,10 @@ from copy import deepcopy
 import random
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 Image.MAX_IMAGE_PIXELS = None
+
+class NavigationToolbar(NavigationToolbar2QT):
+    toolitems = [t for t in NavigationToolbar2QT.toolitems if
+                 t[0] in ('Home', 'Back', 'Forward', 'Pan', 'Zoom','Subplots')]
 
 class Window(QMainWindow):
     def __init__(self):
@@ -121,7 +125,11 @@ class WidgetPlot(QWidget):
                 self.ext == '.tif' or \
                 self.ext == '.tiff' or \
                 self.ext == '':
-            img = Image.open(self.filePath).convert('RGBA')
+            input = Image.open(self.filePath)
+            if input.mode == 'I;16B':
+                img = {'src': Image.open(self.filePath), 'mode': 'I;16B'}
+            else:
+                img = {'src': Image.open(self.filePath).convert('RGBA'), 'mode': 'RGBA'}
             if isinstance(self.canvas, PlotCanvas):
                 self.clearWidgetLayout(self.layout())
                 self.canvas = PlotCanvasImg(img)
@@ -136,7 +144,15 @@ class WidgetPlot(QWidget):
                 self.toolbar = NavigationToolbar(self.canvas, self)
                 self.layout().addWidget(self.toolbar)
                 self.layout().addWidget(self.canvas)
-        else: # Check if this works!
+        elif self.ext == '':
+            try:
+                img = plt.imread(self.filePath)
+                if (img.dtype == 'uint16'):
+                    img_norm = img/np.max(img)
+
+            except Exception as e:
+                QMessageBox.about(self, "Error", "File extension is not supported!")
+        else:
             QMessageBox.about(self, "Error", "File extension is not supported!")
 
     def clearWidgetLayout(self, layout):
@@ -278,7 +294,7 @@ class PlotCanvas(FigureCanvas):
 class PlotCanvasImg(FigureCanvas):
     def __init__(self, img, width=5, height=4, dpi=100):
         self.img = img
-        self.imgArr = mpimg.pil_to_array(img)
+        self.imgArr = mpimg.pil_to_array(self.img['src'])
         self.imgArr.setflags(write=True)
         self.stackImgArr = []
         self.limX = ()
@@ -291,12 +307,18 @@ class PlotCanvasImg(FigureCanvas):
         self.set_init_coords()
         self.plot()
 
+    def profImshow(self):
+        if self.img['mode'] == 'I;16B':
+            self.ax.imshow(self.imgArr, cmap='gray')
+        elif self.img['mode'] == 'RGBA':
+            self.ax.imshow(self.imgArr)
+
     def refresh_Img_plot(self, img):
         self.ax.cla()
         self.img = img
-        self.imgArr = mpimg.pil_to_array(img)
+        self.imgArr = mpimg.pil_to_array(self.img['src'])
         self.imgArr.setflags(write=True)
-        self.ax.imshow(img)
+        self.profImshow()
         self.ax.set_title('Loaded data')
         self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
         self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
@@ -315,7 +337,7 @@ class PlotCanvasImg(FigureCanvas):
         self.y2 = None
 
     def plot(self):
-        self.ax.imshow(self.imgArr)
+        self.profImshow()
         self.ax.set_title('Image processing')
 
         def toggle_selector(event):
@@ -344,11 +366,11 @@ class PlotCanvasImg(FigureCanvas):
         if x1 and y1 and x2 and y2:
             if action == 'Crop':
                 self.stackImgArr.append(self.imgArr)
-                self.img = self.img.crop((x1, y1, x2, y2))
-                self.imgArr = mpimg.pil_to_array(self.img)
+                self.img['src'] = self.img['src'].crop((x1, y1, x2, y2))
+                self.imgArr = mpimg.pil_to_array(self.img['src'])
                 self.imgArr.setflags(write=True)
                 self.ax.cla()
-                self.ax.imshow(self.imgArr)
+                self.profImshow()
                 self.draw()
                 self.set_init_coords()
             elif action == 'Delete':
@@ -356,16 +378,16 @@ class PlotCanvasImg(FigureCanvas):
                 ImgArrCopy = deepcopy(self.imgArr)
                 self.stackImgArr.append(ImgArrCopy)
                 self.imgArr[y1:y2, x1:x2] = 255
-                self.img = Image.fromarray(self.imgArr)
-                self.ax.imshow(self.imgArr)
+                self.img['src'] = Image.fromarray(self.imgArr)
+                self.profImshow()
                 self.draw()
                 self.set_init_coords()
         if action == 'Revert': #TODO: revert should store only changes to image array
             if self.stackImgArr:
                 self.imgArr = self.stackImgArr[-1]
-                self.img = Image.fromarray(self.imgArr)
+                self.img['src'] = Image.fromarray(self.imgArr)
                 self.stackImgArr = self.stackImgArr[:-1]
-                self.ax.imshow(self.imgArr)
+                self.profImshow()
                 self.draw()
 
 if __name__ == '__main__':
