@@ -95,12 +95,14 @@ class WidgetPlot(QWidget):
             self.filePath = filePath
             self.ext = os.path.splitext(self.filePath)[-1]
             self.canvasInitializer()
+        else:
+            self.filePath = ''
 
     def openFileDialog(self):
         try:
             options = QFileDialog.Options()
             options |= QFileDialog.DontUseNativeDialog
-            self.filePath, _ = QFileDialog.getOpenFileName(self, "Open File", "",
+            self.filePath, _ = QFileDialog.getOpenFileName(self, "Open File", os.path.dirname(self.filePath),
                                                            "All Files (*);;Numpy files (*.npy);;"
                                                            "JPEG(*.jpeg, *.jpg);;"
                                                            "PNG(*.png);;"
@@ -134,13 +136,13 @@ class WidgetPlot(QWidget):
                 self.layout().addWidget(self.toolbar)
                 self.layout().addWidget(self.canvas)
 
-        elif self.ext == '.jpg' or \
-                self.ext == '.jpeg' or \
-                self.ext == '.png' or \
-                self.ext == '.tif' or \
-                self.ext == '.tiff' or \
-                self.filePath != '' and self.ext == '':
+        elif self.ext in {'.jpg', '.jpeg', '.JPG',
+                          '.png', '.PNG',
+                          '.tif', '.tiff', 'TIFF'} or \
+                (self.filePath != '' and self.ext == ''):
             input = Image.open(self.filePath)
+            self.ext = input.format
+            print(self.ext)
             if input.mode == 'I;16B':
                 img = {'src': Image.open(self.filePath), 'mode': 'I;16B'}
             else:
@@ -173,22 +175,17 @@ class WidgetPlot(QWidget):
             exp = np.array([self.canvas.currX, self.canvas.currY])
             np.save(path, exp)
         elif isinstance(self.canvas, PlotCanvasImg):
-            self.canvas.ax.get_xaxis().set_visible(False)
-            self.canvas.ax.get_yaxis().set_visible(False)
-            plt.axis('off')
-            if self.ext == '':
-                print('True')
-            plt.savefig(path, bbox_inches='tight', pad_inches=0)
-            self.clearWidgetLayout(self.layout())
-            self.canvas = PlotCanvasImg(self.canvas.img)
-            self.toolbar = NavigationToolbar(self.canvas, self)
-            self.layout().addWidget(self.toolbar)
-            self.layout().addWidget(self.canvas)
+            img = self.canvas.img['src']
+            if self.ext == '' or os.path.splitext(path)[-1] == '':
+                print(self.ext.lower())
+                img.save(path + '.{}'.format(self.ext.lower()), self.ext)
+            else:
+                img.save(path)
 
     def saveFileDialog(self):
         options = QFileDialog.Options()
         options |= QFileDialog.DontUseNativeDialog
-        filePath, _ = QFileDialog.getSaveFileName(self, "Save file", "",
+        filePath, _ = QFileDialog.getSaveFileName(self, "Save file", os.path.dirname(self.filePath),
                                                   "All Files (*);;Numpy files (*.npy);;"
                                                            "JPEG(*.jpeg, *.jpg);;"
                                                            "PNG(*.png);;"
@@ -208,8 +205,8 @@ class WidgetPlot(QWidget):
                                                          "extension, please choose \"Save as...\"")
             btnReply = QMessageBox.Yes
         else:
-            btnReply = QMessageBox.question(self, "Warning", "The file will be overwritten!", QMessageBox.Yes |QMessageBox.Cancel,
-                                   QMessageBox.Yes)
+            btnReply = QMessageBox.question(self, "Warning", "The file at {} will be overwritten!".format(self.filePath),
+                                            QMessageBox.Yes |QMessageBox.Cancel, QMessageBox.Yes)
         if btnReply == QMessageBox.Yes:
             try:
                 self.saverContent(self.filePath)
@@ -229,6 +226,7 @@ class PlotCanvas(FigureCanvas):
         self.ind = []
         self.fig = plt.figure(figsize=(width, height), dpi=dpi)
         self.ax = self.fig.add_subplot(111)
+        self.ax.set_title('Numpy array processing')
         self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
         self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
         FigureCanvas.__init__(self, self.fig)
@@ -255,6 +253,7 @@ class PlotCanvas(FigureCanvas):
             self.ax.scatter(x_arr[reducedIndexes], y_arr[reducedIndexes], 5)
         else:
             self.ax.scatter(x_arr, y_arr, 5)
+        self.ax.set_title('Numpy array processing')
         self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
         self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
 
@@ -341,6 +340,7 @@ class PlotCanvasImg(FigureCanvas):
         self.limY = ()
         self.fig = plt.figure(figsize=(width, height), dpi=dpi)
         self.ax = self.fig.add_subplot(111)
+        self.ax.set_title('Image processing')
         self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
         self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
         FigureCanvas.__init__(self, self.fig)
@@ -359,6 +359,7 @@ class PlotCanvasImg(FigureCanvas):
         self.imgArr = mpimg.pil_to_array(self.img['src'])
         self.imgArr.setflags(write=True)
         self.profImshow()
+        self.ax.set_title('Image processing')
         self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
         self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
         self.fig.canvas.draw_idle()
@@ -405,6 +406,7 @@ class PlotCanvasImg(FigureCanvas):
             if action == 'Crop':
                 self.stackImgArr.append(self.imgArr)
                 self.img['src'] = self.img['src'].crop((x1, y1, x2, y2))
+                print(self.img['src'].format)
                 self.imgArr = mpimg.pil_to_array(self.img['src'])
                 self.imgArr.setflags(write=True)
                 self.refresh_Img_plot(self.img)
@@ -416,6 +418,7 @@ class PlotCanvasImg(FigureCanvas):
                 self.stackImgArr.append(ImgArrCopy)
                 self.imgArr[y1:y2, x1:x2] = 0
                 self.img['src'] = Image.fromarray(self.imgArr)
+                print(self.img['src'].format)
                 self.refresh_Img_plot(self.img)
                 self.draw()
                 self.set_init_coords()
@@ -423,6 +426,7 @@ class PlotCanvasImg(FigureCanvas):
             if self.stackImgArr:
                 self.imgArr = self.stackImgArr[-1]
                 self.img['src'] = Image.fromarray(self.imgArr)
+                print(self.img['src'].format)
                 self.stackImgArr = self.stackImgArr[:-1]
                 self.profImshow()
                 self.draw()
