@@ -64,7 +64,6 @@ class Window(QMainWindow):
         mainMenu = self.menuBar()
         mainMenu.setNativeMenuBar(False)
         fileMenu = mainMenu.addMenu('File')
-        helpMenu = mainMenu.addMenu('Help')
         importFile = QAction('Open', self)
         importFile.setShortcut('Ctrl+A')
         importFile.setStatusTip('Open npy array or image')
@@ -84,6 +83,12 @@ class Window(QMainWindow):
         exitButton.setStatusTip('Exit application')
         exitButton.triggered.connect(self.close)
         fileMenu.addAction(exitButton)
+
+        helpMenu = mainMenu.addMenu('Help')
+        help = QAction('How to use...', self)
+        help.setShortcut('Ctrl+H')
+        help.triggered.connect(m.help)
+        helpMenu.addAction(help)
 
 class WidgetPlot(QWidget):
     def __init__(self, filePath):
@@ -142,7 +147,6 @@ class WidgetPlot(QWidget):
                 (self.filePath != '' and self.ext == ''):
             input = Image.open(self.filePath)
             self.ext = input.format
-            print(self.ext)
             if input.mode == 'I;16B':
                 img = {'src': Image.open(self.filePath), 'mode': 'I;16B'}
             else:
@@ -177,7 +181,6 @@ class WidgetPlot(QWidget):
         elif isinstance(self.canvas, PlotCanvasImg):
             img = self.canvas.img['src']
             if self.ext == '' or os.path.splitext(path)[-1] == '':
-                print(self.ext.lower())
                 img.save(path + '.{}'.format(self.ext.lower()), self.ext)
             else:
                 img.save(path)
@@ -214,6 +217,21 @@ class WidgetPlot(QWidget):
                 QMessageBox.critical(self, "Error", "File cannot be saved.")
                 print('File cannot be saved!')
                 print(e.error, e.args)
+
+    def help(self):
+        QMessageBox.information(self, "Help",
+                                "An interactive program to process ablation mark regions on single cell data pipeline. \n"
+                                "To import numpy array or image in different formats such as PNG, TIFF, etc. choose \n"
+                                "File -> Open \n"
+                                "Select the area of interest by clicking on the uploaded data in GUI (a red rectangle "
+                                "will appear which you can pull and adjust its size). \n"
+                                "After that you can either crop the area of interest or delete selected area.\n"
+                                "The file can be then saved by:\n"
+                                "Save as -> allows to specify file name and its format\n"
+                                "Save -> will overwrite the existing file \n"
+                                "If you have detected bugs, things just go wrong or you have other questions/suggestions,\n"
+                                "please contact me :)\n"
+                                "renat.nigmetzianov@embl.de ")
 
 class PlotCanvas(FigureCanvas):
     def __init__(self, arrX, arrY, width=5, height=4, dpi=100):
@@ -406,7 +424,6 @@ class PlotCanvasImg(FigureCanvas):
             if action == 'Crop':
                 self.stackImgArr.append(self.imgArr)
                 self.img['src'] = self.img['src'].crop((x1, y1, x2, y2))
-                print(self.img['src'].format)
                 self.imgArr = mpimg.pil_to_array(self.img['src'])
                 self.imgArr.setflags(write=True)
                 self.refresh_Img_plot(self.img)
@@ -418,7 +435,6 @@ class PlotCanvasImg(FigureCanvas):
                 self.stackImgArr.append(ImgArrCopy)
                 self.imgArr[y1:y2, x1:x2] = 0
                 self.img['src'] = Image.fromarray(self.imgArr)
-                print(self.img['src'].format)
                 self.refresh_Img_plot(self.img)
                 self.draw()
                 self.set_init_coords()
@@ -426,7 +442,6 @@ class PlotCanvasImg(FigureCanvas):
             if self.stackImgArr:
                 self.imgArr = self.stackImgArr[-1]
                 self.img['src'] = Image.fromarray(self.imgArr)
-                print(self.img['src'].format)
                 self.stackImgArr = self.stackImgArr[:-1]
                 self.profImshow()
                 self.draw()
