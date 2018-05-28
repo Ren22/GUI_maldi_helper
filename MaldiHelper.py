@@ -18,12 +18,10 @@ class NavigationToolbar(NavigationToolbar2QT):
                  t[0] in ('Home', 'Back', 'Forward', 'Pan', 'Zoom', 'Subplots')]
 
 class Window(QMainWindow):
-    def __init__(self, path = None):
+    def __init__(self, path_inp = None, path_out = None):
         super().__init__()
-        if path:
-            self.filePath = path
-        else:
-            self.filePath = ''
+        self.inpFilePath = path_inp if path_inp else ''
+        self.outFilePath = path_out if path_out else ''
         self.initUI()
 
     def initUI(self):
@@ -58,7 +56,7 @@ class Window(QMainWindow):
         vlay2.addWidget(deleteb, 0, QtCore.Qt.AlignRight)
         vlay2.addWidget(revertb, 0, QtCore.Qt.AlignRight)
 
-        m = WidgetPlot(self.filePath)
+        m = WidgetPlot(self.inpFilePath, self.outFilePath)
         hlay.addWidget(m)
         hlay.addLayout(vlay2)
         mainMenu = self.menuBar()
@@ -91,29 +89,31 @@ class Window(QMainWindow):
         helpMenu.addAction(help)
 
 class WidgetPlot(QWidget):
-    def __init__(self, filePath):
+    def __init__(self, inp_file_path, out_file_path):
         super().__init__()
         self.canvas = []
         self.setLayout(QVBoxLayout())
         self.ext = ''
-        if filePath:
-            self.filePath = filePath
-            self.ext = os.path.splitext(self.filePath)[-1]
+        if inp_file_path:
+            self.inpFilePath = inp_file_path
+            self.ext = os.path.splitext(self.inpFilePath)[-1]
             self.canvasInitializer()
         else:
-            self.filePath = ''
+            self.inpFilePath = ''
+        self.outFilePath = out_file_path if out_file_path else ''
 
     def openFileDialog(self):
         try:
             options = QFileDialog.Options()
             options |= QFileDialog.DontUseNativeDialog
-            self.filePath, _ = QFileDialog.getOpenFileName(self, "Open File", os.path.dirname(self.filePath),
+            self.inpFilePath, _ = QFileDialog.getOpenFileName(self, "Open File", os.path.dirname(self.inpFilePath),
                                                            "All Files (*);;Numpy files (*.npy);;"
                                                            "JPEG(*.jpeg, *.jpg);;"
                                                            "PNG(*.png);;"
                                                            "TIFF(*.tiff, *.tif)",
                                                            options=options)
-            self.ext = os.path.splitext(self.filePath)[-1]
+            self.outFilePath = self.inpFilePath
+            self.ext = os.path.splitext(self.inpFilePath)[-1]
             self.canvasInitializer()
         except Exception as e:
             print('File cannot be imported')
@@ -121,11 +121,7 @@ class WidgetPlot(QWidget):
 
     def canvasInitializer(self):
         if self.ext == '.npy':
-            arrX, arrY = np.load(self.filePath)
-            if len(arrX) >= 100000 or len(arrY) >= 100000:
-                QMessageBox.warning(self, "Warning", "Your input data is very big, therefore the number "
-                                                   "of shown points was decreased. Your data will be still "
-                                                   "consistent after you save it.")
+            arrX, arrY = np.load(self.inpFilePath)
             if isinstance(self.canvas, PlotCanvas):
                 self.canvas.drop_n_setvals(arrX, arrY)
                 self.canvas.refresh_plot(arrX, arrY)
@@ -144,13 +140,13 @@ class WidgetPlot(QWidget):
         elif self.ext in {'.jpg', '.jpeg', '.JPG',
                           '.png', '.PNG',
                           '.tif', '.tiff', 'TIFF'} or \
-                (self.filePath != '' and self.ext == ''):
-            input = Image.open(self.filePath)
+                (self.inpFilePath != '' and self.ext == ''):
+            input = Image.open(self.inpFilePath)
             self.ext = input.format
             if input.mode == 'I;16B':
-                img = {'src': Image.open(self.filePath), 'mode': 'I;16B'}
+                img = {'src': Image.open(self.inpFilePath), 'mode': 'I;16B'}
             else:
-                img = {'src': Image.open(self.filePath).convert('RGBA'), 'mode': 'RGBA'}
+                img = {'src': Image.open(self.inpFilePath).convert('RGBA'), 'mode': 'RGBA'}
             if isinstance(self.canvas, PlotCanvas):
                 self.clearWidgetLayout(self.layout())
                 self.canvas = PlotCanvasImg(img)
@@ -166,7 +162,7 @@ class WidgetPlot(QWidget):
                 self.layout().addWidget(self.toolbar)
                 self.layout().addWidget(self.canvas)
         else:
-            QMessageBox.warning(self, "Warning", "File was not chosen or the extension is not supported!")
+            QMessageBox.warning(self, "Warning", "The file was not chosen or the extension is not supported!")
 
     def clearWidgetLayout(self, layout):
         while layout.count():
@@ -188,7 +184,7 @@ class WidgetPlot(QWidget):
     def saveFileDialog(self):
         options = QFileDialog.Options()
         options |= QFileDialog.DontUseNativeDialog
-        filePath, _ = QFileDialog.getSaveFileName(self, "Save file", os.path.dirname(self.filePath),
+        filePath, _ = QFileDialog.getSaveFileName(self, "Save file", os.path.dirname(self.inpFilePath),
                                                   "All Files (*);;Numpy files (*.npy);;"
                                                            "JPEG(*.jpeg, *.jpg);;"
                                                            "PNG(*.png);;"
@@ -203,20 +199,15 @@ class WidgetPlot(QWidget):
                 print(e.error, e.args)
 
     def saveFile(self):
-        if self.ext == '':
-            QMessageBox.information(self, "Information", "The file will be saved with PNG extension. If you want to specify "
-                                                         "extension, please choose \"Save as...\"")
-            btnReply = QMessageBox.Yes
-        else:
-            btnReply = QMessageBox.question(self, "Warning", "The file at {} will be overwritten!".format(self.filePath),
-                                            QMessageBox.Yes |QMessageBox.Cancel, QMessageBox.Yes)
-        if btnReply == QMessageBox.Yes:
+        if self.outFilePath != '':
             try:
-                self.saverContent(self.filePath)
+                self.saverContent(self.outFilePath)
             except Exception as e:
                 QMessageBox.critical(self, "Error", "File cannot be saved.")
                 print('File cannot be saved!')
                 print(e.error, e.args)
+        else:
+            self.saveFileDialog()
 
     def help(self):
         QMessageBox.information(self, "Help",
@@ -352,6 +343,8 @@ class PlotCanvasImg(FigureCanvas):
     def __init__(self, img, width=5, height=4, dpi=100):
         self.img = img
         self.imgArr = mpimg.pil_to_array(self.img['src'])
+        # self.imgArr = (self.imgArr - np.min(self.imgArr)) / (
+        #             np.max(self.imgArr) - np.min(self.imgArr))  # scale img bw 0 and 1
         self.imgArr.setflags(write=True)
         self.stackImgArr = []
         self.limX = ()
@@ -448,7 +441,9 @@ class PlotCanvasImg(FigureCanvas):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    if len(sys.argv) > 1:
+    if len(sys.argv) == 3:
+        main = Window(sys.argv[1], sys.argv[2])
+    elif len(sys.argv) == 2:
         main = Window(sys.argv[1])
     else:
         main = Window()
