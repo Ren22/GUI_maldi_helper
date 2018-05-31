@@ -12,16 +12,18 @@ from copy import deepcopy
 import random
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 Image.MAX_IMAGE_PIXELS = None
+import pickle
 
 class NavigationToolbar(NavigationToolbar2QT):
     toolitems = [t for t in NavigationToolbar2QT.toolitems if
                  t[0] in ('Home', 'Back', 'Forward', 'Pan', 'Zoom', 'Subplots')]
 
 class Window(QMainWindow):
-    def __init__(self, path_inp = None, path_out = None):
+    def __init__(self, path_inp = None, path_out = None, plot_title = None):
         super().__init__()
         self.inpFilePath = path_inp if path_inp else ''
         self.outFilePath = path_out if path_out else ''
+        self.plotTitle = plot_title if plot_title else ''
         self.initUI()
 
     def initUI(self):
@@ -56,7 +58,7 @@ class Window(QMainWindow):
         vlay2.addWidget(deleteb, 0, QtCore.Qt.AlignRight)
         vlay2.addWidget(revertb, 0, QtCore.Qt.AlignRight)
 
-        m = WidgetPlot(self.inpFilePath, self.outFilePath)
+        m = WidgetPlot(self.inpFilePath, self.outFilePath, self.plotTitle)
         hlay.addWidget(m)
         hlay.addLayout(vlay2)
         mainMenu = self.menuBar()
@@ -89,11 +91,12 @@ class Window(QMainWindow):
         helpMenu.addAction(help)
 
 class WidgetPlot(QWidget):
-    def __init__(self, inp_file_path, out_file_path):
+    def __init__(self, inp_file_path, out_file_path, plot_title):
         super().__init__()
         self.canvas = []
         self.setLayout(QVBoxLayout())
         self.ext = ''
+        self.pltTitle = plot_title if plot_title else ''
         if inp_file_path:
             self.inpFilePath = inp_file_path
             self.ext = os.path.splitext(self.inpFilePath)[-1]
@@ -101,6 +104,11 @@ class WidgetPlot(QWidget):
         else:
             self.inpFilePath = ''
         self.outFilePath = out_file_path if out_file_path else ''
+        self.croppedImgCoords = {
+            'topLeft': [],
+            'topRight': [],
+            'bottomLeft': [],
+            'bottomRight': []}
 
     def openFileDialog(self):
         try:
@@ -127,12 +135,12 @@ class WidgetPlot(QWidget):
                 self.canvas.refresh_plot(arrX, arrY)
             elif isinstance(self.canvas, PlotCanvasImg):
                 self.clearWidgetLayout(self.layout())
-                self.canvas = PlotCanvas(arrX, arrY)
+                self.canvas = PlotCanvas(arrX, arrY, self.pltTitle)
                 self.toolbar = NavigationToolbar(self.canvas, self)
                 self.layout().addWidget(self.toolbar)
                 self.layout().addWidget(self.canvas)
             elif not self.canvas:
-                self.canvas = PlotCanvas(arrX, arrY)
+                self.canvas = PlotCanvas(arrX, arrY, self.pltTitle)
                 self.toolbar = NavigationToolbar(self.canvas, self)
                 self.layout().addWidget(self.toolbar)
                 self.layout().addWidget(self.canvas)
@@ -144,9 +152,11 @@ class WidgetPlot(QWidget):
             input = Image.open(self.inpFilePath)
             self.ext = input.format
             if input.mode == 'I;16B':
-                img = {'src': Image.open(self.inpFilePath), 'mode': 'I;16B'}
+                img = {'src': Image.open(self.inpFilePath), 'mode': 'I;16B',
+                       'croppedImgCoords': self.croppedImgCoords, 'pltTitle': self.pltTitle}
             else:
-                img = {'src': Image.open(self.inpFilePath).convert('RGBA'), 'mode': 'RGBA'}
+                img = {'src': Image.open(self.inpFilePath).convert('RGBA'), 'mode': 'RGBA',
+                       'croppedImgCoords': self.croppedImgCoords, 'pltTitle': self.pltTitle}
             if isinstance(self.canvas, PlotCanvas):
                 self.clearWidgetLayout(self.layout())
                 self.canvas = PlotCanvasImg(img)
@@ -156,6 +166,7 @@ class WidgetPlot(QWidget):
             elif isinstance(self.canvas, PlotCanvasImg):
                 self.canvas.stackImgArr = []
                 self.canvas.refresh_Img_plot(img)
+                self.canvas.initCropCoords(img)
             elif not self.canvas:
                 self.canvas = PlotCanvasImg(img)
                 self.toolbar = NavigationToolbar(self.canvas, self)
@@ -178,8 +189,19 @@ class WidgetPlot(QWidget):
             img = self.canvas.img['src']
             if self.ext == '' or os.path.splitext(path)[-1] == '':
                 img.save(path + '.{}'.format(self.ext.lower()), self.ext)
+            elif self.ext == 'JPEG':
+                background = Image.new('RGB', img.size, (255,255,255))
+                background.paste(img, mask=img.split()[3])
+                background.save(path, 'JPEG', quality=80)
             else:
                 img.save(path)
+            try:
+                os.path.splitext("path")[0]
+                with open('{}.pickle'.format(os.path.splitext(path)[0]), 'wb') as handle:
+                    pickle.dump(self.croppedImgCoords, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            except Exception as e:
+                QMessageBox.critical(self, "Error", "Coordinates of the new image cannot be saved!")
+                print(e.message, e.args)
 
     def saveFileDialog(self):
         options = QFileDialog.Options()
@@ -190,13 +212,14 @@ class WidgetPlot(QWidget):
                                                            "PNG(*.png);;"
                                                            "TIFF(*.tiff, *.tif)",
                                                   options=options)
+        #print(self.croppedImgCoords)
         if filePath:
             try:
                 self.saverContent(filePath)
             except Exception as e:
                 QMessageBox.critical(self, "Error", "File cannot be saved.")
                 print('File cannot be saved!')
-                print(e.error, e.args)
+                print(e.message, e.args)
 
     def saveFile(self):
         if self.outFilePath != '':
@@ -205,7 +228,7 @@ class WidgetPlot(QWidget):
             except Exception as e:
                 QMessageBox.critical(self, "Error", "File cannot be saved.")
                 print('File cannot be saved!')
-                print(e.error, e.args)
+                print(e.message, e.args)
         else:
             self.saveFileDialog()
 
@@ -225,7 +248,7 @@ class WidgetPlot(QWidget):
                                 "renat.nigmetzianov@embl.de ")
 
 class PlotCanvas(FigureCanvas):
-    def __init__(self, arrX, arrY, width=5, height=4, dpi=100):
+    def __init__(self, arrX, arrY, pltTitle, width=5, height=4, dpi=100):
         self.currX, self.currY = arrX, arrY
         self.stackX = []
         self.stackY = []
@@ -233,9 +256,10 @@ class PlotCanvas(FigureCanvas):
         self.limY = ()
         self.set_init_coords()
         self.ind = []
+        self.pltTitle = pltTitle
         self.fig = plt.figure(figsize=(width, height), dpi=dpi)
         self.ax = self.fig.add_subplot(111)
-        self.ax.set_title('Numpy array processing')
+        self.ax.set_title(self.pltTitle)
         self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
         self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
         FigureCanvas.__init__(self, self.fig)
@@ -262,7 +286,7 @@ class PlotCanvas(FigureCanvas):
             self.ax.scatter(x_arr[reducedIndexes], y_arr[reducedIndexes], 5)
         else:
             self.ax.scatter(x_arr, y_arr, 5)
-        self.ax.set_title('Numpy array processing')
+        self.ax.set_title(self.pltTitle)
         self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
         self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
 
@@ -343,20 +367,36 @@ class PlotCanvasImg(FigureCanvas):
     def __init__(self, img, width=5, height=4, dpi=100):
         self.img = img
         self.imgArr = mpimg.pil_to_array(self.img['src'])
-        # self.imgArr = (self.imgArr - np.min(self.imgArr)) / (
-        #             np.max(self.imgArr) - np.min(self.imgArr))  # scale img bw 0 and 1
         self.imgArr.setflags(write=True)
         self.stackImgArr = []
         self.limX = ()
         self.limY = ()
         self.fig = plt.figure(figsize=(width, height), dpi=dpi)
+        self.pltTitle = img['pltTitle']
         self.ax = self.fig.add_subplot(111)
-        self.ax.set_title('Image processing')
+        self.ax.set_title(self.pltTitle)
         self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
         self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
         FigureCanvas.__init__(self, self.fig)
         self.set_init_coords()
+        self.initCropCoords(img)
         self.plot()
+
+    def initCropCoords(self, img):
+        self.imgWidth, self.imgHeight = self.img['src'].size
+        self.refImgWidth = deepcopy(self.imgWidth)
+        self.refImgHeight = deepcopy(self.imgHeight)
+        self.x1_ = 0
+        self.y1_ = 0
+        self.x2_ = self.imgWidth
+        self.y2_ = 0
+        self.x3_ = 0
+        self.y3_ = self.imgHeight
+        self.x4_ = self.imgWidth
+        self.y4_ = self.imgHeight
+        self.dx1, self.dx2, self.dx3, self.dx4 = [], [], [], []
+        self.dy1, self.dy2, self.dy3, self.dy4 = [], [], [], []
+        self.dx_dy = img['croppedImgCoords']
 
     def profImshow(self):
         if self.img['mode'] == 'I;16B':
@@ -370,7 +410,7 @@ class PlotCanvasImg(FigureCanvas):
         self.imgArr = mpimg.pil_to_array(self.img['src'])
         self.imgArr.setflags(write=True)
         self.profImshow()
-        self.ax.set_title('Image processing')
+        self.ax.set_title(self.pltTitle)
         self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
         self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
         self.fig.canvas.draw_idle()
@@ -415,8 +455,29 @@ class PlotCanvasImg(FigureCanvas):
     def on_activated(self, action, x1, y1, x2, y2):
         if x1 and y1 and x2 and y2:
             if action == 'Crop':
+                self.x1_ = x1
+                self.y1_ = y1
+                self.dx1.append(self.x1_)
+                self.dy1.append(self.y1_)
+                self.x2_ = x2
+                self.y2_ = y1
+                self.dx2.append(self.imgWidth - self.x2_)
+                self.dy2.append(self.y1_)
+                self.x3_ = x1
+                self.y3_ = y2
+                self.dx3.append(self.x1_)
+                self.dy3.append(self.imgHeight - self.y3_)
+                self.x4_ = x2
+                self.y4_ = y2
+                self.dx4.append(self.imgWidth - self.x2_)
+                self.dy4.append(self.imgHeight - self.y3_)
                 self.stackImgArr.append(self.imgArr)
+                self.dx_dy['topLeft'] = [sum(self.dx1), sum(self.dy1)]
+                self.dx_dy['topRight'] = [self.refImgWidth - sum(self.dx2), sum(self.dy2)]
+                self.dx_dy['bottomLeft'] = [sum(self.dx3), self.refImgHeight - sum(self.dy3)]
+                self.dx_dy['bottomRight'] = [self.refImgWidth - sum(self.dx4), self.refImgHeight - sum(self.dy4)]
                 self.img['src'] = self.img['src'].crop((x1, y1, x2, y2))
+                self.imgWidth, self.imgHeight = self.img['src'].size
                 self.imgArr = mpimg.pil_to_array(self.img['src'])
                 self.imgArr.setflags(write=True)
                 self.refresh_Img_plot(self.img)
@@ -428,6 +489,14 @@ class PlotCanvasImg(FigureCanvas):
                 self.stackImgArr.append(ImgArrCopy)
                 self.imgArr[y1:y2, x1:x2] = 0
                 self.img['src'] = Image.fromarray(self.imgArr)
+                self.dx1.append(0)
+                self.dx2.append(0)
+                self.dx3.append(0)
+                self.dx4.append(0)
+                self.dy1.append(0)
+                self.dy2.append(0)
+                self.dy3.append(0)
+                self.dy4.append(0)
                 self.refresh_Img_plot(self.img)
                 self.draw()
                 self.set_init_coords()
@@ -436,12 +505,23 @@ class PlotCanvasImg(FigureCanvas):
                 self.imgArr = self.stackImgArr[-1]
                 self.img['src'] = Image.fromarray(self.imgArr)
                 self.stackImgArr = self.stackImgArr[:-1]
+                self.dx1 = self.dx1[:-1]
+                self.dx2 = self.dx2[:-1]
+                self.dx3 = self.dx3[:-1]
+                self.dx4 = self.dx4[:-1]
+                self.dy1 = self.dy1[:-1]
+                self.dy2 = self.dy2[:-1]
+                self.dy3 = self.dy3[:-1]
+                self.dy4 = self.dy4[:-1]
                 self.profImshow()
                 self.draw()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    if len(sys.argv) == 3:
+    if len(sys.argv) == 4:
+        print(sys.argv)
+        main = Window(sys.argv[1], sys.argv[2], sys.argv[3])
+    elif len(sys.argv) == 3:
         main = Window(sys.argv[1], sys.argv[2])
     elif len(sys.argv) == 2:
         main = Window(sys.argv[1])
