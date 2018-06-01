@@ -377,7 +377,7 @@ class PlotCanvasImg(FigureCanvas):
         self.limY = ()
         self.fig = plt.figure(figsize=(width, height), dpi=dpi)
         self.ax = self.fig.add_subplot(111)
-        self.ax.set_title(self.pltTitle)
+        self.ax.set_title(self.img['pltTitle'])
         self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
         self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
         self.ax.set_xticks([])
@@ -415,7 +415,7 @@ class PlotCanvasImg(FigureCanvas):
         self.imgArr = mpimg.pil_to_array(self.img['src'])
         self.imgArr.setflags(write=True)
         self.profImshow()
-        self.ax.set_title(self.pltTitle)
+        self.ax.set_title(self.img['pltTitle'])
         self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
         self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
         self.ax.set_xticks([])
@@ -525,6 +525,8 @@ class PlotCanvasImg(FigureCanvas):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
+
+    # TODO: Substitute all lines below /w argparse module
     if len(sys.argv) == 4:
         print(sys.argv)
         main = Window(sys.argv[1], sys.argv[2], sys.argv[3])
