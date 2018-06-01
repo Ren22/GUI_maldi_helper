@@ -12,7 +12,6 @@ from copy import deepcopy
 import random
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 Image.MAX_IMAGE_PIXELS = None
-import pickle
 
 class NavigationToolbar(NavigationToolbar2QT):
     toolitems = [t for t in NavigationToolbar2QT.toolitems if
@@ -197,8 +196,8 @@ class WidgetPlot(QWidget):
                 img.save(path)
             try:
                 os.path.splitext("path")[0]
-                with open('{}.pickle'.format(os.path.splitext(path)[0]), 'wb') as handle:
-                    pickle.dump(self.croppedImgCoords, handle, protocol=pickle.HIGHEST_PROTOCOL)
+                with open('{}_cropCoords.npy'.format(os.path.splitext(path)[0]), 'wb') as handle:
+                    np.save(handle, self.croppedImgCoords)
             except Exception as e:
                 QMessageBox.critical(self, "Error", "Coordinates of the new image cannot be saved!")
                 print(e.message, e.args)
@@ -212,7 +211,6 @@ class WidgetPlot(QWidget):
                                                            "PNG(*.png);;"
                                                            "TIFF(*.tiff, *.tif)",
                                                   options=options)
-        #print(self.croppedImgCoords)
         if filePath:
             try:
                 self.saverContent(filePath)
@@ -293,6 +291,8 @@ class PlotCanvas(FigureCanvas):
     def plot(self):
         self.profScatter(self.currX, self.currY)
         self.ax.axis('equal')
+        self.ax.set_xticks([])
+        self.ax.set_yticks([])
 
         def toggle_selector(event):
             if event.key in ['Q', 'q'] and toggle_selector.RS.active:
@@ -327,6 +327,8 @@ class PlotCanvas(FigureCanvas):
         self.ax.cla()
         self.profScatter(x_arr, y_arr)
         self.ax.axis('equal')
+        self.ax.set_xticks([])
+        self.ax.set_yticks([])
         self.draw()
 
     def refresh_plot_deletion(self, x_arr, y_arr):
@@ -334,6 +336,8 @@ class PlotCanvas(FigureCanvas):
         self.profScatter(x_arr, y_arr)
         self.ax.set_xlim(self.limX)
         self.ax.set_ylim(self.limY)
+        self.ax.set_xticks([])
+        self.ax.set_yticks([])
         self.draw()
 
     def on_activated(self, action, x1, y1, x2, y2):
@@ -372,11 +376,12 @@ class PlotCanvasImg(FigureCanvas):
         self.limX = ()
         self.limY = ()
         self.fig = plt.figure(figsize=(width, height), dpi=dpi)
-        self.pltTitle = img['pltTitle']
         self.ax = self.fig.add_subplot(111)
         self.ax.set_title(self.pltTitle)
         self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
         self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
+        self.ax.set_xticks([])
+        self.ax.set_yticks([])
         FigureCanvas.__init__(self, self.fig)
         self.set_init_coords()
         self.initCropCoords(img)
@@ -413,6 +418,8 @@ class PlotCanvasImg(FigureCanvas):
         self.ax.set_title(self.pltTitle)
         self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
         self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
+        self.ax.set_xticks([])
+        self.ax.set_yticks([])
         self.fig.canvas.draw_idle()
 
     def on_xlims_change(self, axes):
