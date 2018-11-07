@@ -1,6 +1,6 @@
 import sys, os
 from PyQt5.QtWidgets import *
-from PyQt5 import QtCore, QtGui
+from PyQt5 import QtCore
 import numpy as np
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas, \
     NavigationToolbar2QT
@@ -96,6 +96,12 @@ class WidgetPlot(QWidget):
         self.setLayout(QVBoxLayout())
         self.ext = ''
         self.pltTitle = plot_title if plot_title else ''
+        self.croppedImgCoords = {
+            'topLeft': [],
+            'topRight': [],
+            'bottomLeft': [],
+            'bottomRight': []
+        }
         if inp_file_path:
             self.inpFilePath = inp_file_path
             self.ext = os.path.splitext(self.inpFilePath)[-1]
@@ -103,11 +109,7 @@ class WidgetPlot(QWidget):
         else:
             self.inpFilePath = ''
         self.outFilePath = out_file_path if out_file_path else ''
-        self.croppedImgCoords = {
-            'topLeft': [],
-            'topRight': [],
-            'bottomLeft': [],
-            'bottomRight': []}
+
 
     def openFileDialog(self):
         try:
@@ -528,7 +530,6 @@ if __name__ == '__main__':
 
     # TODO: Substitute all lines below /w argparse module
     if len(sys.argv) == 4:
-        print(sys.argv)
         main = Window(sys.argv[1], sys.argv[2], sys.argv[3])
     elif len(sys.argv) == 3:
         main = Window(sys.argv[1], sys.argv[2])
