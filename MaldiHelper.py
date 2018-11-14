@@ -187,6 +187,7 @@ class WidgetPlot(QWidget):
             exp = np.array([self.canvas.currX, self.canvas.currY])
             np.save(path, exp)
         elif isinstance(self.canvas, PlotCanvasImg):
+            print('The post maldi cropped image is saved at {}'.format(path))
             img = self.canvas.img['src']
             if self.ext == '' or os.path.splitext(path)[-1] == '':
                 img.save(path + '.{}'.format(self.ext.lower()), self.ext)
@@ -195,10 +196,11 @@ class WidgetPlot(QWidget):
                 background.paste(img, mask=img.split()[3])
                 background.save(path, 'JPEG', quality=80)
             else:
+                #TODO: make an exception if file was not saved, this happens if path provided w/o the filename
                 img.save(path)
             try:
                 os.path.splitext("path")[0]
-                with open('{}_cropCoords.npy'.format(os.path.splitext(path)[0]), 'wb') as handle:
+                with open('{}_coords.npy'.format(os.path.splitext(path)[0]), 'wb') as handle:
                     np.save(handle, self.croppedImgCoords)
             except Exception as e:
                 QMessageBox.critical(self, "Error", "Coordinates of the new image cannot be saved!")
