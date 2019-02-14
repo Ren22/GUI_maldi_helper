@@ -13,9 +13,11 @@ import random
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 Image.MAX_IMAGE_PIXELS = None
 
+
 class NavigationToolbar(NavigationToolbar2QT):
     toolitems = [t for t in NavigationToolbar2QT.toolitems if
                  t[0] in ('Home', 'Back', 'Forward', 'Pan', 'Zoom', 'Subplots')]
+
 
 class Window(QMainWindow):
     def __init__(self, path_inp = None, path_out = None, plot_title = None):
@@ -88,6 +90,7 @@ class Window(QMainWindow):
         help.setShortcut('Ctrl+H')
         help.triggered.connect(m.help)
         helpMenu.addAction(help)
+
 
 class WidgetPlot(QWidget):
     def __init__(self, inp_file_path, out_file_path, plot_title):
@@ -186,6 +189,7 @@ class WidgetPlot(QWidget):
         if isinstance(self.canvas, PlotCanvas):
             exp = np.array([self.canvas.currX, self.canvas.currY])
             np.save(path, exp)
+            QMessageBox.information(self, "Info", "The file was successfully saved")
         elif isinstance(self.canvas, PlotCanvasImg):
             print('The post maldi cropped image is saved at {}'.format(path))
             img = self.canvas.img['src']
@@ -202,6 +206,7 @@ class WidgetPlot(QWidget):
                 os.path.splitext("path")[0]
                 with open('{}_coords.npy'.format(os.path.splitext(path)[0]), 'wb') as handle:
                     np.save(handle, self.croppedImgCoords)
+                QMessageBox.information(self, "Info", "The file was successfully saved")
             except Exception as e:
                 QMessageBox.critical(self, "Error", "Coordinates of the new image cannot be saved!")
                 print(e.message, e.args)
@@ -285,6 +290,7 @@ class PlotCanvas(FigureCanvas):
     def profScatter(self, x_arr, y_arr):
         if len(x_arr) >= 100000 or len(y_arr) >= 100000:
             reducedIndexes = random.sample(range(len(x_arr)), 35000)
+
             self.ax.scatter(x_arr[reducedIndexes], y_arr[reducedIndexes], 5)
         else:
             self.ax.scatter(x_arr, y_arr, 5)
@@ -295,8 +301,9 @@ class PlotCanvas(FigureCanvas):
     def plot(self):
         self.profScatter(self.currX, self.currY)
         self.ax.axis('equal')
-        self.ax.set_xticks([])
-        self.ax.set_yticks([])
+        # Uncomment to enable ticks on plot
+        # self.ax.set_xticks([])
+        # self.ax.set_yticks([])
 
         def toggle_selector(event):
             if event.key in ['Q', 'q'] and toggle_selector.RS.active:
@@ -331,8 +338,6 @@ class PlotCanvas(FigureCanvas):
         self.ax.cla()
         self.profScatter(x_arr, y_arr)
         self.ax.axis('equal')
-        self.ax.set_xticks([])
-        self.ax.set_yticks([])
         self.draw()
 
     def refresh_plot_deletion(self, x_arr, y_arr):
@@ -340,8 +345,6 @@ class PlotCanvas(FigureCanvas):
         self.profScatter(x_arr, y_arr)
         self.ax.set_xlim(self.limX)
         self.ax.set_ylim(self.limY)
-        self.ax.set_xticks([])
-        self.ax.set_yticks([])
         self.draw()
 
     def on_activated(self, action, x1, y1, x2, y2):
@@ -384,8 +387,6 @@ class PlotCanvasImg(FigureCanvas):
         self.ax.set_title(self.img['pltTitle'])
         self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
         self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
-        self.ax.set_xticks([])
-        self.ax.set_yticks([])
         FigureCanvas.__init__(self, self.fig)
         self.set_init_coords()
         self.initCropCoords(img)
@@ -395,14 +396,6 @@ class PlotCanvasImg(FigureCanvas):
         self.imgWidth, self.imgHeight = self.img['src'].size
         self.refImgWidth = deepcopy(self.imgWidth)
         self.refImgHeight = deepcopy(self.imgHeight)
-        self.x1_ = 0
-        self.y1_ = 0
-        self.x2_ = self.imgWidth
-        self.y2_ = 0
-        self.x3_ = 0
-        self.y3_ = self.imgHeight
-        self.x4_ = self.imgWidth
-        self.y4_ = self.imgHeight
         self.dx1, self.dx2, self.dx3, self.dx4 = [], [], [], []
         self.dy1, self.dy2, self.dy3, self.dy4 = [], [], [], []
         self.dx_dy = img['croppedImgCoords']
@@ -422,8 +415,6 @@ class PlotCanvasImg(FigureCanvas):
         self.ax.set_title(self.img['pltTitle'])
         self.ax.callbacks.connect('xlim_changed', self.on_xlims_change)
         self.ax.callbacks.connect('ylim_changed', self.on_ylims_change)
-        self.ax.set_xticks([])
-        self.ax.set_yticks([])
         self.fig.canvas.draw_idle()
 
     def on_xlims_change(self, axes):
@@ -466,28 +457,20 @@ class PlotCanvasImg(FigureCanvas):
     def on_activated(self, action, x1, y1, x2, y2):
         if x1 and y1 and x2 and y2:
             if action == 'Crop':
-                self.x1_ = x1
-                self.y1_ = y1
-                self.dx1.append(self.x1_)
-                self.dy1.append(self.y1_)
-                self.x2_ = x2
-                self.y2_ = y1
-                self.dx2.append(self.imgWidth - self.x2_)
-                self.dy2.append(self.y1_)
-                self.x3_ = x1
-                self.y3_ = y2
-                self.dx3.append(self.x1_)
-                self.dy3.append(self.imgHeight - self.y3_)
-                self.x4_ = x2
-                self.y4_ = y2
-                self.dx4.append(self.imgWidth - self.x2_)
-                self.dy4.append(self.imgHeight - self.y3_)
+                self.dx1.append(x1)
+                self.dy1.append(y1)
+                self.dx2.append(self.imgWidth - x2)
+                self.dy2.append(y1)
+                self.dx3.append(x1)
+                self.dy3.append(self.imgHeight - y2)
+                self.dx4.append(self.imgWidth - x2)
+                self.dy4.append(self.imgHeight - y2)
                 self.stackImgArr.append(self.imgArr)
                 self.dx_dy['topLeft'] = [sum(self.dx1), sum(self.dy1)]
                 self.dx_dy['topRight'] = [self.refImgWidth - sum(self.dx2), sum(self.dy2)]
                 self.dx_dy['bottomLeft'] = [sum(self.dx3), self.refImgHeight - sum(self.dy3)]
                 self.dx_dy['bottomRight'] = [self.refImgWidth - sum(self.dx4), self.refImgHeight - sum(self.dy4)]
-                self.img['src'] = self.img['src'].crop((x1, y1, x2, y2))
+                self.img['src'] = self.img['src'].crop((int(x1), int(y1), int(x2), int(y2)))
                 self.imgWidth, self.imgHeight = self.img['src'].size
                 self.imgArr = mpimg.pil_to_array(self.img['src'])
                 self.imgArr.setflags(write=True)
@@ -516,14 +499,15 @@ class PlotCanvasImg(FigureCanvas):
                 self.imgArr = self.stackImgArr[-1]
                 self.img['src'] = Image.fromarray(self.imgArr)
                 self.stackImgArr = self.stackImgArr[:-1]
-                self.dx1 = self.dx1[:-1]
-                self.dx2 = self.dx2[:-1]
-                self.dx3 = self.dx3[:-1]
-                self.dx4 = self.dx4[:-1]
-                self.dy1 = self.dy1[:-1]
-                self.dy2 = self.dy2[:-1]
-                self.dy3 = self.dy3[:-1]
-                self.dy4 = self.dy4[:-1]
+                self.imgWidth, self.imgHeight = self.img['src'].size
+                del self.dx1[-1]
+                del self.dx2[-1]
+                del self.dx3[-1]
+                del self.dx4[-1]
+                del self.dy1[-1]
+                del self.dy2[-1]
+                del self.dy3[-1]
+                del self.dy4[-1]
                 self.profImshow()
                 self.draw()
 
